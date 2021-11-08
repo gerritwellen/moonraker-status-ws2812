@@ -1,13 +1,9 @@
 
+# ESP8266 based 3D-Printer Status Lamp
 
-# simple ESP8266 based Octoprint Printer State Lamp
+Simple Sketch to display the printer state connected to Klipper/Moonraker on a Neopixel (WS2812b or similar)
 
-Simple Sketch to display the printer state connected to Octoprint on a Neopixel (WS2812b or similar)
-
-This is just a placeholder until a planned octoprint plugin is avialable. It polls the Ocotoprint REST API periodically via a HTTP GET request. There are some delay between the real state of the printer and the of the LED, this comes do the simple polling approch. Faster polling result in lower delay but also increases the load on the ESP and on the wifi or network in general (on Octoprint too).
-
-Security Warning:
-This sketch sends unencrypted GET requests with the octoprint apikey in cleartext in the request header through your network. Although this isn't that big of a security risk though, if your octoprint is not visible to the internet (which i did not recommend anyway)
+This Sketch is a fork of [FrYakaTKoP/simple-octo-ws2812](https://github.com/FrYakaTKoP/simple-octo-ws2812) made to be compatible with Klipper/Moonraker instead of Octoprint.
 
 ## Description:
 The color of the lamp will show you the status as follows:
@@ -104,24 +100,16 @@ https://wiki.wemos.cc/downloads
 
 # Configuration
 
-There are 4 main configurations in the **config.h** file, which must be made by user...
-1. Wifi SSID
-	``` const char* SSID = "myWifi";```
-	the name of your Wireless Network
+There are 3 main configurations in the config.h file, which must be made by user...
 
-2. Wifi Password
-	``` const char* SSID = "myWifi";```
-	the password to your Wireless Network
+1. Wifi SSID `const char\* SSID = "myWifi";`  
+   The name of your Wireless Network
 
-3. Octoprint API key
-```const char* APIKEY = "FA9131811AF94AB48C6A9ED45AEF60FC";```
-	like a password to the Octoprint REST Api
-	{TBD} /doc/img/sc-octocprint-api-key.PNG
-	You can obtain your API key in the Octoprint Webinterface in the settings under API.
-	More info about the Octoprint API key in the API Documentation: [link](http://docs.octoprint.org/en/master/api/general.html#authorization)
+2. Wifi Password `const char\* SSID = "myWifi";`  
+   The password to your Wireless Network
 
-4. Octoprint Ip Address
-	the Network address to your Octoprint. Same as you need to gain acces to your web interface of octoprint.
+3. Printer Ip Address `String PRINTER_IP = "192.168.0.xxx";`  
+   The Network address to your Printer. Same as you need to gain acces to your web interface.
 
 ## Example User Config:
 
@@ -129,8 +117,7 @@ There are 4 main configurations in the **config.h** file, which must be made by 
 #define LEDPIN D2 // where you Led is connected
 const char* SSID = "myWifi";
 const char* WPWD = "wifipassword";
-const char* APIKEY = "FA9131811AF94AB48C6A9ED45AEF60FC";
-String OCTOIP = "192.168.1.3";
+String PRINTER_IP = "192.168.1.3";
 uint16_t pollInterval = 500;
 const uint8_t lenght = 1;
 ```
