@@ -1,447 +1,338 @@
 #include "config.h"
 
-uint8_t wiCount = 0;
-uint32_t previousMillis = 0;
-
-//Animation Variables
-//
-uint8_t k = 0, stage = 0, modus = 6;
-uint32_t last = 0;
-//
-//end Animaton Variables
-
 DynamicJsonDocument doc(1024);
 
-//Querry URL
-const char *prefix = "http://";
-const char *postfix = "/printer/objects/query?print_stats";
-String url = prefix + PRINTER_IP + postfix;
-const char *URL = url.c_str();
+enum pattern
+{
+    NONE,
+    RAINBOW_CYCLE,
+    FLASH,
+    FADE
+};
 
-ESP8266WiFiMulti WiFiMulti;
+class NeoPatterns : public Adafruit_NeoPixel
+{
+public:
+    // Member Variables:
+    pattern ActivePattern; // which pattern is running
 
-//Neopixel
-Adafruit_NeoPixel LED = Adafruit_NeoPixel(length, LEDPIN, NEO_GRB + NEO_KHZ800);
+    unsigned long Interval;   // milliseconds between updates
+    unsigned long lastUpdate; // last update of position
+
+    uint32_t Color1, Color2; // What colors are in use
+    uint16_t TotalSteps;     // total number of steps in the pattern
+    uint16_t Index;          // current step within the pattern
+
+    // Constructor - calls base-class constructor to initialize strip
+    NeoPatterns(uint16_t pixels, uint8_t pin, uint8_t type) : Adafruit_NeoPixel(pixels, pin, type) {}
+    NeoPatterns() : Adafruit_NeoPixel(1, D4, NEO_GRB + NEO_KHZ800) {}
+
+    void update()
+    {
+        if ((millis() - lastUpdate) > Interval) // time to update
+        {
+            lastUpdate = millis();
+            switch (ActivePattern)
+            {
+            case RAINBOW_CYCLE:
+                RainbowCycleUpdate();
+                break;
+            case FLASH:
+                FlashUpdate();
+                break;
+            case FADE:
+                FadeUpdate();
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    // Increment the Index and reset at the end
+    void Increment()
+    {
+        Index++;
+        if (Index >= TotalSteps)
+        {
+            Index = 0;
+        }
+    }
+
+    // Initialize for a RainbowCycle
+    void RainbowCycle(uint8_t interval)
+    {
+        ActivePattern = RAINBOW_CYCLE;
+        Interval = interval;
+        TotalSteps = 256;
+        Index = 0;
+    }
+
+    // Update the Rainbow Cycle Pattern
+    void RainbowCycleUpdate()
+    {
+        setPixelColor(0, Wheel(Index & 255));
+
+        // for (int i = 0; i < numPixels(); i++)
+        // {
+        //     setPixelColor(i, Wheel(Index & 255));
+        // }
+        show();
+        Increment();
+    }
+
+    // Initialize for Flash
+    void Flash(uint8_t interval, uint32_t c1, uint32_t c2 = Color(0, 0, 0))
+    {
+        ActivePattern = FLASH;
+        Interval = interval;
+        TotalSteps = 2;
+        Index = 0;
+        Color1 = c1;
+        Color2 = c2;
+    }
+
+    // Update the Flash Pattern
+    void FlashUpdate()
+    {
+        if (Index == 0)
+        {
+            setPixelColor(0, Color1);
+        }
+        else
+        {
+            setPixelColor(0, Color2);
+        }
+        show();
+        Increment();
+    }
+
+    // Initialize for a Fade
+    void Fade(uint8_t interval, uint16_t steps, uint32_t c1, uint32_t c2 = Color(0, 0, 0))
+    {
+        ActivePattern = FADE;
+        TotalSteps = steps;
+        Interval = interval;
+        Index = 0;
+        Color1 = c1;
+        Color2 = c2;
+    }
+
+    // Update the Fade Pattern
+    void FadeUpdate()
+    {
+        // Calculate linear interpolation between Color1 and Color2
+        // Optimise order of operations to minimize truncation error
+        uint16_t FadeIndex;
+        uint16_t HalfSteps = TotalSteps / 2;
+        if (Index >= (HalfSteps))
+        {
+            FadeIndex = TotalSteps - Index;
+        }
+        else
+        {
+            FadeIndex = Index;
+        }
+
+        uint8_t red = ((Red(Color1) * (HalfSteps - FadeIndex)) + (Red(Color2) * FadeIndex)) / TotalSteps;
+        uint8_t green = ((Green(Color1) * (HalfSteps - FadeIndex)) + (Green(Color2) * FadeIndex)) / TotalSteps;
+        uint8_t blue = ((Blue(Color1) * (HalfSteps - FadeIndex)) + (Blue(Color2) * FadeIndex)) / TotalSteps;
+
+        ColorSet(Color(red, green, blue));
+
+        show();
+        Increment();
+    }
+
+    // Input a value 0 to 255 to get a color value.
+    // The colours are a transition r - g - b - back to r.
+    uint32_t Wheel(byte WheelPos)
+    {
+        WheelPos = 255 - WheelPos;
+        if (WheelPos < 85)
+        {
+            return Color(255 - WheelPos * 3, 0, WheelPos * 3);
+        }
+        else if (WheelPos < 170)
+        {
+            WheelPos -= 85;
+            return Color(0, WheelPos * 3, 255 - WheelPos * 3);
+        }
+        else
+        {
+            WheelPos -= 170;
+            return Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+        }
+    }
+
+    // Returns the Red component of a 32-bit color
+    uint8_t Red(uint32_t color)
+    {
+        return (color >> 16) & 0xFF;
+    }
+
+    // Returns the Green component of a 32-bit color
+    uint8_t Green(uint32_t color)
+    {
+        return (color >> 8) & 0xFF;
+    }
+
+    // Returns the Blue component of a 32-bit color
+    uint8_t Blue(uint32_t color)
+    {
+        return color & 0xFF;
+    }
+
+    // Set all pixels to a color (synchronously)
+    void ColorSet(uint32_t color)
+    {
+        for (int i = 0; i < numPixels(); i++)
+        {
+            setPixelColor(i, color);
+        }
+        show();
+    }
+};
+
+class Requester
+{
+public:
+    unsigned long pollInterval; // milliseconds between updates
+    unsigned long lastUpdate;   // last update of position
+    uint8_t modus = 7;
+    uint8_t lastModus;
+    NeoPatterns LED = NeoPatterns(NUMLEDS, LEDPIN, NEO_GRB + NEO_KHZ800);
+
+    //Querry URL
+    const char *prefix = "http://";
+    const char *postfix = "/printer/objects/query?print_stats";
+    String url = prefix + PRINTER_IP + postfix;
+    const char *URL = url.c_str();
+
+    ESP8266WiFiMulti WiFiMulti;
+
+    Requester()
+    {
+        // LED = l;
+        WiFi.mode(WIFI_STA);
+        WiFiMulti.addAP(SSID, WPWD);
+    };
+
+    void setup()
+    {
+        LED.begin();
+        LED.Flash(200, LED.Color(255, 255, 255));
+    }
+
+    void update()
+    {
+        LED.update();
+
+        if (millis() - lastUpdate > pollInterval)
+        {
+            lastUpdate = millis();
+            lastModus = modus;
+            // wait for WiFi connection
+            if (WiFiMulti.run() == WL_CONNECTED)
+            {
+                WiFiClient c;
+                HTTPClient http;
+                http.begin(c, URL);
+                int httpCode = http.GET();
+
+                if (httpCode > 0)
+                {
+                    String payload = http.getString();
+                    deserializeJson(doc, payload);
+                    JsonObject payloadObject = doc.as<JsonObject>();
+                    if (httpCode == HTTP_CODE_OK)
+                    {
+                        String state = payloadObject["result"]["status"]["print_stats"]["state"];
+                        //USE_SERIAL.println(state);
+                        if (state == "printing")
+                        {
+                            modus = 3; // yellow
+                        }
+                        else if (state == "paused")
+                        {
+                            modus = 2; // blue
+                        }
+                        else if (state == "error")
+                        {
+                            modus = 0; // red
+                        }
+                        else if (state == "standby")
+                        {
+                            modus = 4; // rainbow
+                        }
+                        else if (state == "complete")
+                        {
+                            modus = 6; // violet
+                        }
+                    }
+                }
+            }
+        }
+        if (modus != lastModus)
+        {
+            switch (modus)
+            {
+            case 0:
+            {
+                LED.Fade(1, 16, LED.Color(255, 0, 0), LED.Color(128, 0, 0));
+                break;
+            }
+            case 1:
+            {
+                LED.Fade(1, 16, LED.Color(0, 255, 0), LED.Color(0, 128, 0));
+                break;
+            }
+
+            case 2:
+            {
+                LED.Fade(1, 16, LED.Color(0, 0, 255), LED.Color(0, 0, 128));
+                break;
+            }
+            case 3:
+            {
+                LED.Fade(1, 16, LED.Color(0, 255, 0), LED.Color(255, 255, 0));
+                break;
+            }
+            case 4:
+            {
+                LED.RainbowCycle(3);
+                break;
+            }
+            case 5:
+            {
+                LED.Flash(200, LED.Color(255, 0, 0), LED.Color(0, 0, 255));
+                break;
+            }
+            case 6:
+            {
+                LED.Fade(1, 16, LED.Color(206, 94, 201), LED.Color(255, 117, 248));
+                break;
+            }
+            default:
+            {
+                break;
+            }
+            }
+        }
+    }
+};
+
+Requester Req;
 
 void setup()
 {
-
-    LED.begin();
-    LED.show(); // Initialize all pixels to 'off'
-
     USE_SERIAL.begin(115200);
-    // USE_SERIAL.setDebugOutput(true);
-
-    USE_SERIAL.println();
-    USE_SERIAL.println();
-    USE_SERIAL.println("try connecting to Wifi");
-
-    WiFi.mode(WIFI_STA);
-    WiFiMulti.addAP(SSID, WPWD);
-    delay(100);
+    USE_SERIAL.println("");
+    USE_SERIAL.println("Setup start");
+    Req.setup();
+    USE_SERIAL.println("Setup finished");
 }
 
 void loop()
 {
-    unsigned long currentMillis = millis();
-
-    if (currentMillis - previousMillis >= pollInterval)
-    {
-        previousMillis = currentMillis;
-
-        // wait for WiFi connection
-        if (WiFiMulti.run() == WL_CONNECTED)
-        {
-            WiFiClient c;
-            HTTPClient http;
-            http.begin(c, URL);
-            int httpCode = http.GET();
-
-            if (httpCode > 0)
-            {
-                // {
-                //   "result":
-                //   {
-                //     "status" : {
-                //       "print_stats" : {
-                //         "print_duration" : 0.0,
-                //         "total_duration" : 0.0,
-                //         "filament_used" : 0.0,
-                //         "filename" : "",
-                //         "state" : "standby",
-                //         "message" : ""
-                //       },
-                //       "virtual_sdcard" : {
-                //         "progress" : 0.0,
-                //         "file_position" : 0,
-                //         "is_active" : false,
-                //         "file_path" : null,
-                //         "file_size" : 0
-                //       },
-                //       "webhooks" : {
-                //         "state" : "ready",
-                //         "state_message" : "Printer is ready"
-                //       },
-                //       "heater_bed" : {
-                //         "temperature" : 25.436296393427405,
-                //         "power" : 0.0,
-                //         "target" : 0.0
-                //       },
-                //       "extruder" : {
-                //         "pressure_advance" : 0.05,
-                //         "target" : 0.0,
-                //         "power" : 0.0,
-                //         "can_extrude" : false,
-                //         "smooth_time" : 0.04,
-                //         "temperature" : 25.37958857035252
-                //       }
-                //     },
-                //     "eventtime" : 533.171112737
-                //   }
-                // }
-                String payload = http.getString();
-                deserializeJson(doc, payload);
-                JsonObject payloadObject = doc.as<JsonObject>();
-                //USE_SERIAL.println(payload);
-                if (httpCode == HTTP_CODE_OK)
-                {
-                    String state = payloadObject["result"]["status"]["print_stats"]["state"];
-                    //USE_SERIAL.println(state);
-                    if (state == "printing")
-                    {
-                        modus = 3; // Yellow, Printing
-                    }
-                    else if (state == "paused")
-                    {
-                        modus = 2; // blue
-                                   // TBD: should display rainbow now and on
-                    }
-                    else if (state == "error")
-                    {
-                        modus = 0; // red
-                    }
-                    else if (state == "standby")
-                    {
-                        modus = 4;
-                    }
-                }
-                else if (httpCode == HTTP_CODE_UNAUTHORIZED)
-                {
-                    // wrong api key
-                    modus = 5; // Red
-                    // TBD: should stop after 2min
-                }
-                else if (httpCode == HTTP_CODE_CONFLICT)
-                {
-                    // Printer is not operational
-                    modus = 2; // Green
-                }
-            }
-        }
-
-        switch (modus)
-        {
-        case 0:
-        {
-            fade_red(&last, &k, &stage, length);
-            break;
-        }
-        case 1:
-        {
-            fade_green(&last, &k, &stage, length);
-            break;
-        }
-
-        case 2:
-        {
-            fade_blue(&last, &k, &stage, length);
-            break;
-        }
-        case 3:
-        {
-            fade_yellow(&last, &k, &stage, length);
-            break;
-        }
-        case 4:
-        {
-            rainbow(&last, &k, &stage, length);
-            break;
-        }
-        case 5:
-        {
-            police(&last, &stage, length);
-            break;
-        }
-        case 6:
-        {
-            flash(&last, &stage, length);
-            break;
-        }
-
-        default:
-        {
-
-            break;
-        }
-        } //switch
-    }
-}
-
-//Animation Functions
-void rainbow(uint32_t *lastmillis, uint8_t *k, uint8_t *stage, uint8_t length)
-{
-
-    unsigned long currentmillis = millis();
-
-    if ((currentmillis - *lastmillis) >= 20)
-    {
-        *lastmillis = millis();
-        switch (*stage)
-        {
-        case 0:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 255 - *k, 0, *k);
-            }
-            break;
-        }
-
-        case 1:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 0, *k, 255 - *k);
-            }
-            break;
-        }
-
-        case 2:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, *k, 255 - *k, 0);
-            }
-            break;
-        }
-        }
-        LED.show();
-        if (*k == 254)
-        {
-            *stage = (*stage + 1) % 3;
-        }
-        *k = (*k + 1) % 255;
-    }
-}
-
-void fade_red(uint32_t *lastmillis, uint8_t *k, uint8_t *stage, uint8_t length)
-{
-
-    unsigned long currentmillis = millis();
-
-    if ((currentmillis - *lastmillis) >= 20)
-    {
-        *lastmillis = millis();
-        switch (*stage)
-        {
-        case 0:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 0, 63 + *k, 0);
-            }
-            break;
-        }
-
-        case 1:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 0, 255 - *k, 0);
-            }
-            break;
-        }
-        }
-        LED.show();
-        if (*k == 191)
-        {
-            *stage = (*stage + 1) % 2;
-        }
-        *k = (*k + 1) % 192;
-    }
-}
-
-void fade_green(uint32_t *lastmillis, uint8_t *k, uint8_t *stage, uint8_t length)
-{
-
-    unsigned long currentmillis = millis();
-
-    if ((currentmillis - *lastmillis) >= 20)
-    {
-        *lastmillis = millis();
-        switch (*stage)
-        {
-        case 0:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 0, 63 + *k, 0);
-            }
-            break;
-        }
-
-        case 1:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 0, 255 - *k, 0);
-            }
-            break;
-        }
-        }
-        LED.show();
-        if (*k == 191)
-        {
-            *stage = (*stage + 1) % 2;
-        }
-        *k = (*k + 1) % 192;
-    }
-}
-
-void fade_blue(uint32_t *lastmillis, uint8_t *k, uint8_t *stage, uint8_t length)
-{
-
-    unsigned long currentmillis = millis();
-
-    if ((currentmillis - *lastmillis) >= 20)
-    {
-        *lastmillis = millis();
-        switch (*stage)
-        {
-        case 0:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 0, 0, 63 + *k);
-            }
-            break;
-        }
-
-        case 1:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 0, 0, 255 - *k);
-            }
-            break;
-        }
-        }
-        LED.show();
-        if (*k == 191)
-        {
-            *stage = (*stage + 1) % 2;
-        }
-        *k = (*k + 1) % 192;
-    }
-}
-
-void fade_yellow(uint32_t *lastmillis, uint8_t *k, uint8_t *stage, uint8_t length)
-{
-
-    unsigned long currentmillis = millis();
-
-    if ((currentmillis - *lastmillis) >= 20)
-    {
-        *lastmillis = millis();
-        switch (*stage)
-        {
-        case 0:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 63 + *k, 63 + *k, 0);
-            }
-            break;
-        }
-
-        case 1:
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 255 - *k, 255 - *k, 0);
-            }
-            break;
-        }
-        }
-        LED.show();
-        if (*k == 191)
-        {
-            *stage = (*stage + 1) % 2;
-        }
-        *k = (*k + 1) % 192;
-    }
-}
-
-void police(uint32_t *lastmillis, uint8_t *stage, uint8_t length)
-{
-
-    unsigned long currentmillis = millis();
-
-    if ((currentmillis - *lastmillis) >= 400)
-    {
-        *lastmillis = millis();
-        if (*stage == 0)
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 255, 0, 0);
-            }
-            LED.show();
-            *stage = 1;
-        }
-        else
-        {
-            if (*stage == 1)
-            {
-                for (int i = 0; i < length; i++)
-                {
-                    LED.setPixelColor(i, 0, 0, 255);
-                }
-                LED.show();
-                *stage = 0;
-            }
-        }
-    }
-}
-
-void flash(uint32_t *lastmillis, uint8_t *stage, uint8_t length)
-{
-
-    unsigned long currentmillis = millis();
-
-    if ((currentmillis - *lastmillis) >= 40)
-    {
-        *lastmillis = millis();
-        if (*stage == 0)
-        {
-            for (int i = 0; i < length; i++)
-            {
-                LED.setPixelColor(i, 255, 255, 255);
-            }
-            LED.show();
-            *stage = 1;
-        }
-        else
-        {
-            if (*stage == 1)
-            {
-                for (int i = 0; i < length; i++)
-                {
-                    LED.setPixelColor(i, 0, 0, 0);
-                }
-                LED.show();
-                *stage = 0;
-            }
-        }
-    }
+    Req.update();
 }
