@@ -3,7 +3,7 @@
 
 DynamicJsonDocument doc(1024);
 
-// Pattern types supported:
+/// Pattern types supported:
 enum pattern
 {
     NONE,
@@ -12,28 +12,28 @@ enum pattern
     FADE
 };
 
-// NeoPattern Class - derived from the Adafruit_NeoPixel class
+/// NeoPatterns Class - derived from the Adafruit_NeoPixel class
 class NeoPatterns : public Adafruit_NeoPixel
 {
 public:
-    // Member Variables:
-    pattern ActivePattern; // which pattern is running
+    /// Member Variables:
+    pattern ActivePattern; /// which pattern is running
 
-    unsigned long Interval;   // milliseconds between updates
-    unsigned long lastUpdate; // last update of position
+    unsigned long Interval;   /// milliseconds between updates
+    unsigned long lastUpdate; /// last update of position
 
-    uint32_t Color1, Color2; // What colors are in use
-    uint16_t TotalSteps;     // total number of steps in the pattern
-    uint16_t Index;          // current step within the pattern
+    uint32_t Color1, Color2; /// What colors are in use
+    uint16_t TotalSteps;     /// total number of steps in the pattern
+    uint16_t Index;          /// current step within the pattern
 
-    // Constructor - calls base-class constructor to initialize strip
+    /// Constructor - calls base-class constructor to initialize strip
     NeoPatterns(uint16_t pixels, uint8_t pin, uint8_t type) : Adafruit_NeoPixel(pixels, pin, type) {}
     NeoPatterns() : Adafruit_NeoPixel(1, D4, NEO_GRB + NEO_KHZ800) {}
 
-    // Update the pattern
+    /// Update the pattern
     void update()
     {
-        if ((millis() - lastUpdate) > Interval) // time to update
+        if ((millis() - lastUpdate) > Interval) /// time to update
         {
             lastUpdate = millis();
             switch (ActivePattern)
@@ -53,7 +53,7 @@ public:
         }
     }
 
-    // Increment the Index and reset at the end
+    /// Increment the Index and reset at the end
     void Increment()
     {
         Index++;
@@ -63,7 +63,7 @@ public:
         }
     }
 
-    // Initialize for a RainbowCycle
+    /// Initialize for a RainbowCycle
     void RainbowCycle(uint8_t interval)
     {
         ActivePattern = RAINBOW_CYCLE;
@@ -72,7 +72,7 @@ public:
         Index = 0;
     }
 
-    // Update the Rainbow Cycle Pattern
+    /// Update the Rainbow Cycle Pattern
     void RainbowCycleUpdate()
     {
         setPixelColor(0, Wheel(Index & 255));
@@ -81,7 +81,7 @@ public:
         Increment();
     }
 
-    // Initialize for a Flash
+    /// Initialize for a Flash
     void Flash(uint8_t interval, uint32_t c1, uint32_t c2 = Color(0, 0, 0))
     {
         ActivePattern = FLASH;
@@ -92,7 +92,7 @@ public:
         Color2 = c2;
     }
 
-    // Update the Flash Pattern
+    /// Update the Flash Pattern
     void FlashUpdate()
     {
         if (Index == 0)
@@ -107,7 +107,7 @@ public:
         Increment();
     }
 
-    // Initialize for a Fade
+    /// Initialize for a Fade
     void Fade(uint8_t interval, uint16_t steps, uint32_t c1, uint32_t c2 = Color(0, 0, 0))
     {
         ActivePattern = FADE;
@@ -118,7 +118,7 @@ public:
         Color2 = c2;
     }
 
-    // Update the Fade Pattern
+    /// Update the Fade Pattern
     void FadeUpdate()
     {
 
@@ -143,8 +143,8 @@ public:
         Increment();
     }
 
-    // Input a value 0 to 255 to get a color value.
-    // The colours are a transition r - g - b - back to r.
+    /// Input a value 0 to 255 to get a color value.
+    /// The colours are a transition r - g - b - back to r.
     uint32_t Wheel(byte WheelPos)
     {
         WheelPos = 255 - WheelPos;
@@ -164,25 +164,25 @@ public:
         }
     }
 
-    // Returns the Red component of a 32-bit color
+    /// Returns the Red component of a 32-bit color
     uint8_t Red(uint32_t color)
     {
         return (color >> 16) & 0xFF;
     }
 
-    // Returns the Green component of a 32-bit color
+    /// Returns the Green component of a 32-bit color
     uint8_t Green(uint32_t color)
     {
         return (color >> 8) & 0xFF;
     }
 
-    // Returns the Blue component of a 32-bit color
+    /// Returns the Blue component of a 32-bit color
     uint8_t Blue(uint32_t color)
     {
         return color & 0xFF;
     }
 
-    // Set all pixels to a color (synchronously)
+    /// Set all pixels to a color (synchronously)
     void ColorSet(uint32_t color)
     {
         for (int i = 0; i < numPixels(); i++)
@@ -193,22 +193,25 @@ public:
     }
 };
 
+/// Requester Class - handles Requests to Moonraker and interprets the output
 class Requester
 {
+private:
+    NeoPatterns LED = NeoPatterns(NUMLEDS, LEDPIN, NEO_GRB + NEO_KHZ800); /// NeoPatterns Object to interact with
+    const char *prefix = "http:///";                                      ///URL prefix
+    const char *postfix = "/printer/objects/query?print_stats";           /// URL postfix
+    String url = prefix + PRINTER_IP + postfix;                           /// URL to poll
+    ESP8266WiFiMulti WiFiMulti;                                           /// Wifi Object
+
 public:
-    unsigned long pollInterval;
-    unsigned long lastUpdate;
-    uint8_t modus = 7;
-    uint8_t lastModus;
-    NeoPatterns LED = NeoPatterns(NUMLEDS, LEDPIN, NEO_GRB + NEO_KHZ800);
+    unsigned long pollInterval; /// milliseconds between updates
+    unsigned long lastUpdate;   /// last request to Moonraker
+    uint8_t modus = 7;          /// modus
+    uint8_t lastModus;          /// modus before the request to detect change
 
-    const char *prefix = "http://";
-    const char *postfix = "/printer/objects/query?print_stats";
-    String url = prefix + PRINTER_IP + postfix;
-    const char *URL = url.c_str();
+    const char *URL = url.c_str(); /// Char Array of URL
 
-    ESP8266WiFiMulti WiFiMulti;
-
+    /// Constructor - initialize WIFI-Connection
     Requester()
     {
 
@@ -216,12 +219,14 @@ public:
         WiFiMulti.addAP(SSID, WPWD);
     };
 
+    /// Setup function to start the LED Strip
     void setup()
     {
         LED.begin();
         LED.Flash(200, LED.Color(255, 255, 255));
     }
 
+    /// Make request to Moonraker and update the modus
     void update()
     {
         LED.update();
@@ -323,7 +328,6 @@ public:
 Requester Req;
 void setup();
 void loop();
-#line 326 "G:/WeeWoo/Projects/moonraker-status-ws2812/src/src.ino"
 void setup()
 {
     USE_SERIAL.begin(115200);
