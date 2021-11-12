@@ -1,7 +1,9 @@
+#include <Arduino.h>
 #include "config.h"
 
 DynamicJsonDocument doc(1024);
 
+// Pattern types supported:
 enum pattern
 {
     NONE,
@@ -10,6 +12,7 @@ enum pattern
     FADE
 };
 
+// NeoPattern Class - derived from the Adafruit_NeoPixel class
 class NeoPatterns : public Adafruit_NeoPixel
 {
 public:
@@ -27,6 +30,7 @@ public:
     NeoPatterns(uint16_t pixels, uint8_t pin, uint8_t type) : Adafruit_NeoPixel(pixels, pin, type) {}
     NeoPatterns() : Adafruit_NeoPixel(1, D4, NEO_GRB + NEO_KHZ800) {}
 
+    // Update the pattern
     void update()
     {
         if ((millis() - lastUpdate) > Interval) // time to update
@@ -48,6 +52,7 @@ public:
             }
         }
     }
+
     // Increment the Index and reset at the end
     void Increment()
     {
@@ -72,15 +77,11 @@ public:
     {
         setPixelColor(0, Wheel(Index & 255));
 
-        // for (int i = 0; i < numPixels(); i++)
-        // {
-        //     setPixelColor(i, Wheel(Index & 255));
-        // }
         show();
         Increment();
     }
 
-    // Initialize for Flash
+    // Initialize for a Flash
     void Flash(uint8_t interval, uint32_t c1, uint32_t c2 = Color(0, 0, 0))
     {
         ActivePattern = FLASH;
@@ -120,8 +121,7 @@ public:
     // Update the Fade Pattern
     void FadeUpdate()
     {
-        // Calculate linear interpolation between Color1 and Color2
-        // Optimise order of operations to minimize truncation error
+
         uint16_t FadeIndex;
         uint16_t HalfSteps = TotalSteps / 2;
         if (Index >= (HalfSteps))
@@ -196,13 +196,12 @@ public:
 class Requester
 {
 public:
-    unsigned long pollInterval; // milliseconds between updates
-    unsigned long lastUpdate;   // last update of position
+    unsigned long pollInterval;
+    unsigned long lastUpdate;
     uint8_t modus = 7;
     uint8_t lastModus;
     NeoPatterns LED = NeoPatterns(NUMLEDS, LEDPIN, NEO_GRB + NEO_KHZ800);
 
-    //Querry URL
     const char *prefix = "http://";
     const char *postfix = "/printer/objects/query?print_stats";
     String url = prefix + PRINTER_IP + postfix;
@@ -212,7 +211,7 @@ public:
 
     Requester()
     {
-        // LED = l;
+
         WiFi.mode(WIFI_STA);
         WiFiMulti.addAP(SSID, WPWD);
     };
@@ -231,7 +230,7 @@ public:
         {
             lastUpdate = millis();
             lastModus = modus;
-            // wait for WiFi connection
+
             if (WiFiMulti.run() == WL_CONNECTED)
             {
                 WiFiClient c;
@@ -247,26 +246,26 @@ public:
                     if (httpCode == HTTP_CODE_OK)
                     {
                         String state = payloadObject["result"]["status"]["print_stats"]["state"];
-                        //USE_SERIAL.println(state);
+
                         if (state == "printing")
                         {
-                            modus = 3; // yellow
+                            modus = 3;
                         }
                         else if (state == "paused")
                         {
-                            modus = 2; // blue
+                            modus = 2;
                         }
                         else if (state == "error")
                         {
-                            modus = 0; // red
+                            modus = 0;
                         }
                         else if (state == "standby")
                         {
-                            modus = 4; // rainbow
+                            modus = 4;
                         }
                         else if (state == "complete")
                         {
-                            modus = 6; // violet
+                            modus = 6;
                         }
                     }
                 }
@@ -322,7 +321,9 @@ public:
 };
 
 Requester Req;
-
+void setup();
+void loop();
+#line 326 "G:/WeeWoo/Projects/moonraker-status-ws2812/src/src.ino"
 void setup()
 {
     USE_SERIAL.begin(115200);
