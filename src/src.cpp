@@ -16,24 +16,27 @@ enum pattern
 class NeoPatterns : public Adafruit_NeoPixel
 {
 public:
-    /// Member Variables:
-    pattern ActivePattern; /// which pattern is running
-
-    unsigned long Interval;   /// milliseconds between updates
-    unsigned long lastUpdate; /// last update of position
-
-    uint32_t Color1, Color2; /// What colors are in use
-    uint16_t TotalSteps;     /// total number of steps in the pattern
-    uint16_t Index;          /// current step within the pattern
+    /// which pattern is running
+    pattern ActivePattern;
+    /// milliseconds between updates
+    unsigned long Interval;
+    /// last update of position
+    unsigned long lastUpdate;
+    /// What colors are in use
+    uint32_t Color1, Color2;
+    /// total number of steps in the pattern
+    uint16_t TotalSteps;
+    /// current step within the pattern
+    uint16_t Index;
 
     /// Constructor - calls base-class constructor to initialize strip
     NeoPatterns(uint16_t pixels, uint8_t pin, uint8_t type) : Adafruit_NeoPixel(pixels, pin, type) {}
-    NeoPatterns() : Adafruit_NeoPixel(1, D4, NEO_GRB + NEO_KHZ800) {}
 
     /// Update the pattern
     void update()
     {
-        if ((millis() - lastUpdate) > Interval) /// time to update
+        // time to update
+        if ((millis() - lastUpdate) > Interval)
         {
             lastUpdate = millis();
             switch (ActivePattern)
@@ -197,19 +200,28 @@ public:
 class Requester
 {
 private:
-    NeoPatterns LED = NeoPatterns(NUMLEDS, LEDPIN, NEO_GRB + NEO_KHZ800); /// NeoPatterns Object to interact with
-    const char *prefix = "http:///";                                      ///URL prefix
-    const char *postfix = "/printer/objects/query?print_stats";           /// URL postfix
-    String url = prefix + PRINTER_IP + postfix;                           /// URL to poll
-    ESP8266WiFiMulti WiFiMulti;                                           /// Wifi Object
+    /// NeoPatterns Object to interact with
+    NeoPatterns LED = NeoPatterns(NUMLEDS, LEDPIN, NEO_GRB + NEO_KHZ800);
+    ///URL prefix
+    const char *prefix = "http:///";
+    /// URL postfix
+    const char *postfix = "/printer/objects/query?print_stats";
+    /// URL to poll
+    String url = prefix + PRINTER_IP + postfix;
+    /// Wifi Object
+    ESP8266WiFiMulti WiFiMulti;
 
 public:
-    unsigned long pollInterval; /// milliseconds between updates
-    unsigned long lastUpdate;   /// last request to Moonraker
-    uint8_t modus = 7;          /// modus
-    uint8_t lastModus;          /// modus before the request to detect change
-
-    const char *URL = url.c_str(); /// Char Array of URL
+    /// milliseconds between updates
+    unsigned long pollInterval;
+    /// last request to Moonraker
+    unsigned long lastUpdate;
+    /// modus
+    uint8_t modus = 7;
+    /// modus before the request to detect change
+    uint8_t lastModus;
+    /// Char Array of URL
+    const char *URL = url.c_str();
 
     /// Constructor - initialize WIFI-Connection
     Requester()
