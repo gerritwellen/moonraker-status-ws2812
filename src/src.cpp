@@ -1,42 +1,36 @@
-#include <Arduino.h>
 #include "config.h"
 
 DynamicJsonDocument doc(1024);
 
-/// Pattern types supported:
 enum pattern
 {
     NONE,
     RAINBOW_CYCLE,
     FLASH,
-    FADE
+    FADE,
+    STATIC
 };
 
-/// NeoPatterns Class - derived from the Adafruit_NeoPixel class
 class NeoPatterns : public Adafruit_NeoPixel
 {
 public:
-    /// which pattern is running
-    pattern ActivePattern;
-    /// milliseconds between updates
-    unsigned long Interval;
-    /// last update of position
-    unsigned long lastUpdate;
-    /// What colors are in use
-    uint32_t Color1, Color2;
-    /// total number of steps in the pattern
-    uint16_t TotalSteps;
-    /// current step within the pattern
-    uint16_t Index;
+    // Member Variables:
+    pattern ActivePattern; // which pattern is running
 
-    /// Constructor - calls base-class constructor to initialize strip
+    unsigned long Interval;   // milliseconds between updates
+    unsigned long lastUpdate; // last update of position
+
+    uint32_t Color1, Color2; // What colors are in use
+    uint16_t TotalSteps;     // total number of steps in the pattern
+    uint16_t Index;          // current step within the pattern
+
+    // Constructor - calls base-class constructor to initialize strip
     NeoPatterns(uint16_t pixels, uint8_t pin, uint8_t type) : Adafruit_NeoPixel(pixels, pin, type) {}
+    NeoPatterns() : Adafruit_NeoPixel(1, D4, NEO_GRB + NEO_KHZ800) {}
 
-    /// Update the pattern
     void update()
     {
-        // time to update
-        if ((millis() - lastUpdate) > Interval)
+        if ((millis() - lastUpdate) > Interval) // time to update
         {
             lastUpdate = millis();
             switch (ActivePattern)
@@ -50,13 +44,15 @@ public:
             case FADE:
                 FadeUpdate();
                 break;
+            case STATIC:
+                StaticUpdate();
+                break;
             default:
                 break;
             }
         }
     }
-
-    /// Increment the Index and reset at the end
+    // Increment the Index and reset at the end
     void Increment()
     {
         Index++;
@@ -66,7 +62,7 @@ public:
         }
     }
 
-    /// Initialize for a RainbowCycle
+    // Initialize for a RainbowCycle
     void RainbowCycle(uint8_t interval)
     {
         ActivePattern = RAINBOW_CYCLE;
@@ -75,16 +71,15 @@ public:
         Index = 0;
     }
 
-    /// Update the Rainbow Cycle Pattern
+    // Update the Rainbow Cycle Pattern
     void RainbowCycleUpdate()
     {
         setPixelColor(0, Wheel(Index & 255));
-
         show();
         Increment();
     }
 
-    /// Initialize for a Flash
+    // Initialize for Flash
     void Flash(uint8_t interval, uint32_t c1, uint32_t c2 = Color(0, 0, 0))
     {
         ActivePattern = FLASH;
@@ -95,7 +90,7 @@ public:
         Color2 = c2;
     }
 
-    /// Update the Flash Pattern
+    // Update the Flash Pattern
     void FlashUpdate()
     {
         if (Index == 0)
@@ -110,7 +105,7 @@ public:
         Increment();
     }
 
-    /// Initialize for a Fade
+    // Initialize for a Fade
     void Fade(uint8_t interval, uint16_t steps, uint32_t c1, uint32_t c2 = Color(0, 0, 0))
     {
         ActivePattern = FADE;
@@ -121,10 +116,11 @@ public:
         Color2 = c2;
     }
 
-    /// Update the Fade Pattern
+    // Update the Fade Pattern
     void FadeUpdate()
     {
-
+        // Calculate linear interpolation between Color1 and Color2
+        // Optimise order of operations to minimize truncation error
         uint16_t FadeIndex;
         uint16_t HalfSteps = TotalSteps / 2;
         if (Index >= (HalfSteps))
@@ -146,8 +142,21 @@ public:
         Increment();
     }
 
-    /// Input a value 0 to 255 to get a color value.
-    /// The colours are a transition r - g - b - back to r.
+    /// Initialize for a Static
+    void Static(uint32_t c1)
+    {
+        ActivePattern = STATIC;
+        Color1 = c1;
+    }
+
+    void StaticUpdate()
+    {
+        ColorSet(Color1);
+        show();
+    }
+
+    // Input a value 0 to 255 to get a color value.
+    // The colours are a transition r - g - b - back to r.
     uint32_t Wheel(byte WheelPos)
     {
         WheelPos = 255 - WheelPos;
@@ -167,25 +176,25 @@ public:
         }
     }
 
-    /// Returns the Red component of a 32-bit color
+    // Returns the Red component of a 32-bit color
     uint8_t Red(uint32_t color)
     {
         return (color >> 16) & 0xFF;
     }
 
-    /// Returns the Green component of a 32-bit color
+    // Returns the Green component of a 32-bit color
     uint8_t Green(uint32_t color)
     {
         return (color >> 8) & 0xFF;
     }
 
-    /// Returns the Blue component of a 32-bit color
+    // Returns the Blue component of a 32-bit color
     uint8_t Blue(uint32_t color)
     {
         return color & 0xFF;
     }
 
-    /// Set all pixels to a color (synchronously)
+    // Set all pixels to a color (synchronously)
     void ColorSet(uint32_t color)
     {
         for (int i = 0; i < numPixels(); i++)
@@ -196,49 +205,47 @@ public:
     }
 };
 
-/// Requester Class - handles Requests to Moonraker and interprets the output
 class Requester
 {
-private:
-    /// NeoPatterns Object to interact with
-    NeoPatterns LED = NeoPatterns(NUMLEDS, LEDPIN, NEO_GRB + NEO_KHZ800);
-    ///URL prefix
-    const char *prefix = "http:///";
-    /// URL postfix
-    const char *postfix = "/printer/objects/query?print_stats";
-    /// URL to poll
-    String url = prefix + PRINTER_IP + postfix;
-    /// Wifi Object
-    ESP8266WiFiMulti WiFiMulti;
-
 public:
-    /// milliseconds between updates
-    unsigned long pollInterval;
-    /// last request to Moonraker
-    unsigned long lastUpdate;
-    /// modus
-    uint8_t modus = 7;
-    /// modus before the request to detect change
+    unsigned long pollInterval; // milliseconds between updates
+    unsigned long lastUpdate;   // last update of position
+    uint8_t modus;
     uint8_t lastModus;
-    /// Char Array of URL
+    uint8_t timeouts = 0;
+    NeoPatterns LED = NeoPatterns(NUMLEDS, LEDPIN, NEO_GRB + NEO_KHZ800);
+
+    //Querry URL
+    const char *prefix = "http://";
+    const char *postfix = "/printer/objects/query?print_stats";
+    String url = prefix + PRINTER_IP + postfix;
     const char *URL = url.c_str();
 
-    /// Constructor - initialize WIFI-Connection
+    ESP8266WiFiMulti WiFiMulti;
+
     Requester()
     {
-
+        // LED = l;
         WiFi.mode(WIFI_STA);
         WiFiMulti.addAP(SSID, WPWD);
     };
 
-    /// Setup function to start the LED Strip
     void setup()
     {
         LED.begin();
-        LED.Flash(200, LED.Color(255, 255, 255));
+        modus = 1;
     }
 
-    /// Make request to Moonraker and update the modus
+    /* Modes:
+        0 Error Red Fade IN/Out
+        1 Wifi not connected White Flash
+        2 No response White Static
+        3 Printing Green/Yellow Fade
+        4 Standby Rainbow
+        5 Paused Blue Fade IN/Out
+        6 Complete  Fade Purple
+    */
+
     void update()
     {
         LED.update();
@@ -246,8 +253,7 @@ public:
         if (millis() - lastUpdate > pollInterval)
         {
             lastUpdate = millis();
-            lastModus = modus;
-
+            // wait for WiFi connection
             if (WiFiMulti.run() == WL_CONNECTED)
             {
                 WiFiClient c;
@@ -257,39 +263,53 @@ public:
 
                 if (httpCode > 0)
                 {
+                    timeouts = 0;
                     String payload = http.getString();
                     deserializeJson(doc, payload);
                     JsonObject payloadObject = doc.as<JsonObject>();
                     if (httpCode == HTTP_CODE_OK)
                     {
                         String state = payloadObject["result"]["status"]["print_stats"]["state"];
-
-                        if (state == "printing")
+                        //USE_SERIAL.println(state);
+                        if (state == "error")
                         {
-                            modus = 3;
+                            modus = 0; // red
                         }
-                        else if (state == "paused")
+                        else if (state == "printing")
                         {
-                            modus = 2;
-                        }
-                        else if (state == "error")
-                        {
-                            modus = 0;
+                            modus = 3; // yellow
                         }
                         else if (state == "standby")
                         {
-                            modus = 4;
+                            modus = 4; // rainbow
+                        }
+                        else if (state == "paused")
+                        {
+                            modus = 5; // blue
                         }
                         else if (state == "complete")
                         {
-                            modus = 6;
+                            modus = 6; // violet
                         }
                     }
                 }
+                else
+                {
+                    timeouts++;
+                    if (timeouts > 10)
+                    {
+                        modus = 2;
+                    }
+                }
+            }
+            else
+            {
+                modus = 1;
             }
         }
         if (modus != lastModus)
         {
+            USE_SERIAL.println(modus);
             switch (modus)
             {
             case 0:
@@ -299,13 +319,12 @@ public:
             }
             case 1:
             {
-                LED.Fade(1, 16, LED.Color(0, 255, 0), LED.Color(0, 128, 0));
+                LED.Flash(50, LED.Color(255, 255, 255), LED.Color(0, 0, 0));
                 break;
             }
-
             case 2:
             {
-                LED.Fade(1, 16, LED.Color(0, 0, 255), LED.Color(0, 0, 128));
+                LED.Static(LED.Color(255, 255, 255));
                 break;
             }
             case 3:
@@ -320,7 +339,7 @@ public:
             }
             case 5:
             {
-                LED.Flash(200, LED.Color(255, 0, 0), LED.Color(0, 0, 255));
+                LED.Fade(1, 16, LED.Color(0, 0, 255), LED.Color(0, 0, 128));
                 break;
             }
             case 6:
@@ -334,12 +353,12 @@ public:
             }
             }
         }
+        lastModus = modus;
     }
 };
 
 Requester Req;
-void setup();
-void loop();
+
 void setup()
 {
     USE_SERIAL.begin(115200);
